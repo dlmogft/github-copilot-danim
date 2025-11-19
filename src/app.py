@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
 from pathlib import Path
+from pydantic import BaseModel
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -80,6 +81,19 @@ activities = {
     }
 }
 
+class SignupRequest(BaseModel):
+    email: str
+
+class UnregisterRequest(BaseModel):
+    participant: str
+
+class Activity(BaseModel):
+    name: str
+    description: str
+    schedule: str
+    max_participants: int
+    participants: list[str] = []
+
 
 @app.get("/")
 def root():
@@ -92,7 +106,7 @@ def get_activities():
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, request: SignupRequest):
     """Sign up a student for an activity"""
     # Validate activity exists
     if activity_name not in activities:
@@ -102,9 +116,43 @@ def signup_for_activity(activity_name: str, email: str):
     activity = activities[activity_name]
 
     # Validate student is not already signed up
-    if email in activity["participants"]:
+    if request.email in activity["participants"]:
         raise HTTPException(status_code=400, detail="Student already signed up for this activity")
-    
+
     # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    activity["participants"].append(request.email)
+    return {"message": f"Signed up {request.email} for {activity_name}"}
+
+
+@app.post("/activities/{activity_name}/unregister")
+def unregister_from_activity(activity_name: str, request: UnregisterRequest):
+    """Unregister a student from an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    # Get the specific activity
+    activity = activities[activity_name]
+
+    # Validate student is signed up
+    if request.participant not in activity["participants"]:
+        raise HTTPException(status_code=404, detail="Participant not found in this activity")
+
+    # Remove student
+    activity["participants"].remove(request.participant)
+    return {"message": f"Unregistered {request.participant} from {activity_name}"}
+
+
+@app.post("/activities")
+def create_activity(activity: Activity):
+    """Create a new activity"""
+    if activity.name in activities:
+        raise HTTPException(status_code=400, detail="Activity already exists")
+
+    activities[activity.name] = {
+        "description": activity.description,
+        "schedule": activity.schedule,
+        "max_participants": activity.max_participants,
+        "participants": activity.participants,
+    }
+    return {"message": f"Activity {activity.name} created successfully"}
